@@ -19,8 +19,8 @@ alert.HOST = "10.230.1.11"
 alert.PORT = 22
 alert.PWD = "megvii"
 alert.USER = "face"
-alert.ROWS = "400"
-alert.FILEALL = "200"
+alert.ROWS = "1200"
+alert.FILEALL = "5000"
 
 '''
 这里是模式配置命令,已经二进制化
