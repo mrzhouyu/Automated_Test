@@ -276,7 +276,11 @@ class Api():
                         U = self.url_2
                         chooseVersion = 0
                     self.times += 1
+                    t = 0.5
+                    if len(self.master_List) < 2: #利用主网关的列表长度来判断是否需要你等待所属副网关组网上来
+                        t = 20
                     self.oneMulOta(self.slave_List, type="slaver", otaUrl=U)
+                    time.sleep(t)#避免只遇到一个主的情况，主的刚升级完 副的可能还没组网上来
                     self.oneMulOta(self.master_List, type="master", otaUrl=U)
                     spend_time = time.asctime(time.localtime(time.time() - start_time))
                     logCmd = "OTA TIMES TOTAL IS {}, SPENDTIME: {}, CURRENTTIME: {}".format(self.times, spend_time,time.asctime(time.localtime(time.time())))
