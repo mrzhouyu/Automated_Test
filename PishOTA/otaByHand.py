@@ -23,6 +23,8 @@ class Api():
     URL = ""
     URL1 = ""
     def __init__(self, port = 22, host = "10.230.0.41", user = "zhouy", pwd = "Zhouy123!" ):
+        print('''1. flag = 0 且times =0-->ota 1次,用来升级主+副用,默认选项;\n2. flag = 1-->ota 1次，升级带wifi的二级网关;\n3.flag = 其他 且 times = 0--> ota forever;\n4. flag = 其他 且 times = somenumber-->循环otasomenumber次.\n*****************************************************************'''.rjust(30))
+        self.flag, self.times =self.getOtaModel()
         self.port = port
         self.host = host
         self.user = user
@@ -50,6 +52,17 @@ class Api():
             os.mkdir("WorkSpace")
             os.chdir("WorkSpace")
         print("当前工作目录是 {}".format("WorkSpace"))
+    def getOtaModel(self):
+        try:    #避输入错误的数据类型
+            flag = int(input("输入flag："))
+            times = int(input("输入times："))
+        except:
+            print("输入格式或者数据类型不正确")
+            sys.exit(1)
+        if not flag or not times:
+            return 0,0
+        else:
+            return flag, times
 
     #获取交升级设备列表
     def getOtaId(self):
@@ -221,14 +234,14 @@ class Api():
     # 2. flag = 其他 且 times = 0--> ota forever，
     # 3. flag = 其他 且 times = somenumber-->循环otasomenumber次
 
-    def main(self, flag = 0, times = 0):
-        if flag == 0:
+    def main(self):
+        if self.flag == 0:
             self.oneMulOta(self.slave_List,type="slaver", otaUrl=self.url_1)
             self.oneMulOta(self.master_List,type="master", otaUrl=self.url_1)
-        elif flag==1:
+        elif self.flag==1:
             self.oneMulOta(self.master_List,type="other", otaUrl=self.url_1)
         else:
-            if times == 0:
+            if self.times == 0:
                 status = "total"
                 start_time = time.time()
                 chooseVersion = 0 #版本交叉的flag变量
@@ -240,29 +253,33 @@ class Api():
                         U = self.url_2
                         chooseVersion = 0
 
-                    times += 1
+                    self.times += 1
+                    t = 0.5
+                    if len(self.master_List) < 2: #利用主网关的列表长度来判断是否需要你等待所属副网关组网上来
+                        t = 20
                     self.oneMulOta(self.slave_List, type="slaver", otaUrl=U)
+                    time.sleep(t)  #避免只遇到一个主的情况，主的刚升级完 副的可能还没组网上来
                     self.oneMulOta(self.master_List, type="master", otaUrl=U)
                     spend_time = time.asctime(time.localtime(time.time() - start_time))
-                    logCmd = "OTA TIMES TOTAL IS {}, SPENDTIME: {}, CURRENTTIME: {}".format(times, spend_time, time.asctime(time.localtime(time.time())))
+                    logCmd = "OTA TIMES TOTAL IS {}, SPENDTIME: {}, CURRENTTIME: {}".format(self.times, spend_time, time.asctime(time.localtime(time.time())))
                     self.saveLog(status, logCmd)
             else:
                 status = "total"
                 start_time = time.time()
                 chooseVersion = 0  # 版本交叉的flag变量
                 n = 0
-                while 0 < times:
+                while 0 < self.times:
                     if chooseVersion == 0: #两个版本交叉ota
                         U = self.url_1
                         chooseVersion = 1
                     else:
                         U = self.url_2
                         chooseVersion = 0
-                    times += 1
+                    self.times += 1
                     self.oneMulOta(self.slave_List, type="slaver", otaUrl=U)
                     self.oneMulOta(self.master_List, type="master", otaUrl=U)
                     spend_time = time.asctime(time.localtime(time.time() - start_time))
-                    logCmd = "OTA TIMES TOTAL IS {}, SPENDTIME: {}, CURRENTTIME: {}".format(times, spend_time,time.asctime(time.localtime(time.time())))
+                    logCmd = "OTA TIMES TOTAL IS {}, SPENDTIME: {}, CURRENTTIME: {}".format(self.times, spend_time,time.asctime(time.localtime(time.time())))
                     self.saveLog(status, logCmd)
 
     #在线设备列表
@@ -367,7 +384,7 @@ def Multi():
 
 if __name__ == "__main__":
     C = Api()
-    C.main(flag=1)
+    C.main()
 
     #多线程
 
