@@ -4,3 +4,4 @@
 # @Site    : 
 # @File    : __init__.py
 # @Software: PyCharm
+from PishOTA.testone import *
