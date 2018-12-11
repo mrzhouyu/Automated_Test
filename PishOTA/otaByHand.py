@@ -5,6 +5,7 @@
 # @File    : otaByHand.py
 # @Software: PyCharm
 
+import datetime
 import pexpect
 import time
 import re
@@ -15,6 +16,7 @@ import multiprocessing
 from progressbar import *
 import os
 import shutil
+import json
 
 class Api():
     #可配成{"id":"sn",}形式
@@ -29,6 +31,7 @@ class Api():
         self.host = host
         self.user = user
         self.pwd = pwd
+        self.laseVersionUrl = "" #用于自动ota备用，自动检测最新版本，自动ota到最新版本
         self.otaSuccessList = []
         self.otaFailedList = []
         self.clearWorkspace()
@@ -94,13 +97,23 @@ class Api():
 
     #登陆获取控制台
     def __logIn(self):
+        pishOld = "pish 127.0.0.1 6666"
+        print("当前所使用的PISH为%s,"%pishOld,end='')
+        pish=input("请确认是否为该pish(yes/no)")
+        if pish == "yes":
+            pish =pishOld
+        elif pish == "no":
+            pish = input("请输入pish：(例：pish 127.0.0.1 6666 or pish): ")
+        else:
+            print("确认错误，请重启脚本！")
+            sys.exit(1)
         #conCli=pexpect.spawn("clish")
         # conCli.expect(">")
         conCli = pexpect.spawn("ssh {}@{}".format(self.user, self.host))
         conCli.expect("password")
         conCli.sendline(self.pwd)
         conCli.expect("~")
-        conCli.sendline("pish 127.0.0.1 6666")
+        conCli.sendline(pish)
         conCli.expect(">")
         print("login ok")
         conCli.sendline("notifyFilter sns none")
@@ -124,7 +137,7 @@ class Api():
                 Time = time.asctime(time.localtime(time.time()))
                 logCmd = "GWSL{} BEFORE OTA VERSION IS NEW, END CURRENT OTA, CURRENTTIME: {}".format(id, Time)
                 self.saveLog(status, logCmd)
-                self.otaFailedList.append(id)
+                # self.otaFailedList.append(id) 已经是新版本的不算错误
                 return
         else:
             status = "failed"
@@ -136,7 +149,7 @@ class Api():
 
         #print("下发ota命令....版本是{}".format(version))
         con.sendline(cmd)
-        start_time = time.time()
+        start_time = datetime.datetime.now()
         num = con.expect(["ok", "timeout"])
         if num == 0:
             status = "ok"
@@ -160,7 +173,7 @@ class Api():
         while True:
             total += 1
             time.sleep(1)
-            end_time = time.time()
+            end_time = datetime.datetime.now()
             con.sendline(cmd)
             num = con.expect(["Type Name", "timeout",pexpect.EOF])
             if num == 0:
@@ -169,9 +182,9 @@ class Api():
                 if newVer == version:
                     #print("id 为 {} 的二级网关升级成功".format(id))
                     status = "success"
-                    spendTime = time.asctime(time.localtime(end_time - startTime))
+                    spendTime = (end_time - startTime).seconds
                     Time = time.asctime(time.localtime(time.time()))
-                    logCmd = "GWSL{} OTA TO {} {}, TOTALTIME: {}, CURRENTTIME: {}".format(id, version, status, spendTime, Time)
+                    logCmd = "GWSL{} OTA TO {} {}, SPENDTIME: {}, CURRENTTIME: {}".format(id, version, status, spendTime, Time)
                     self.otaSuccessList.append(id)
                     self.saveLog(status,logCmd)
                     break
@@ -243,7 +256,6 @@ class Api():
         else:
             if self.times == 0:
                 status = "total"
-                start_time = time.time()
                 chooseVersion = 0 #版本交叉的flag变量
                 while True:
                     if chooseVersion == 0: #两个版本交叉ota
@@ -260,12 +272,11 @@ class Api():
                     self.oneMulOta(self.slave_List, type="slaver", otaUrl=U)
                     time.sleep(t)  #避免只遇到一个主的情况，主的刚升级完 副的可能还没组网上来
                     self.oneMulOta(self.master_List, type="master", otaUrl=U)
-                    spend_time = time.asctime(time.localtime(time.time() - start_time))
-                    logCmd = "OTA TIMES TOTAL IS {}, SPENDTIME: {}, CURRENTTIME: {}".format(self.times, spend_time, time.asctime(time.localtime(time.time())))
+                    logCmd = "OTA CURRENT TIMES  IS {}, CURRENTTIME: {}".format(self.times, time.asctime(time.localtime(time.time())))
                     self.saveLog(status, logCmd)
             else:
                 status = "total"
-                start_time = time.time()
+                start_time = datetime.datetime.now()
                 chooseVersion = 0  # 版本交叉的flag变量
                 n = 0
                 while 0 < self.times:
@@ -275,16 +286,17 @@ class Api():
                     else:
                         U = self.url_2
                         chooseVersion = 0
-                    self.times += 1
+                    self.times -= 1
+                    n += 1
                     t = 0.5
                     if len(self.master_List) < 2: #利用主网关的列表长度来判断是否需要你等待所属副网关组网上来
                         t = 20
                     self.oneMulOta(self.slave_List, type="slaver", otaUrl=U)
                     time.sleep(t)#避免只遇到一个主的情况，主的刚升级完 副的可能还没组网上来
                     self.oneMulOta(self.master_List, type="master", otaUrl=U)
-                    spend_time = time.asctime(time.localtime(time.time() - start_time))
-                    logCmd = "OTA TIMES TOTAL IS {}, SPENDTIME: {}, CURRENTTIME: {}".format(self.times, spend_time,time.asctime(time.localtime(time.time())))
-                    self.saveLog(status, logCmd)
+                spend_time = (datetime.datetime.now() - start_time).seconds
+                logCmd = "OTA TIMES TOTAL IS {}, SPENDTIME: {}, CURRENTTIME: {}".format(n, spend_time, time.asctime(time.localtime(time.time())))
+                self.saveLog(status, logCmd)
 
     #在线设备列表
     def onlineDeviceStatus(self):
@@ -300,9 +312,9 @@ class Api():
                 if re.findall(r'(online|offline)', line) != []:
                     if 'CDSC' in line:
                         try:
-                            MatchStr = re.sub("\s+",":",line)
+                            MatchStr = re.sub("\s+",":",line).split(":")
                             status = MatchStr[0]
-                            id = MatchStr[6]
+                            id= MatchStr[6]
                             SN = MatchStr[7]
                             version = MatchStr[8]
                             CDSCDic[id] = [status, SN, version]
@@ -311,22 +323,22 @@ class Api():
 
                     elif 'GWFL' in line:
                         try:
-                            MatchStr = re.sub("\s+",":",line)
+                            MatchStr = re.sub("\s+",":",line).split(":")
                             status = MatchStr[0]
                             id = MatchStr[6]
                             SN = MatchStr[7]
                             version = MatchStr[8]
-                            CDSCDic[id] = [status, SN, version]
+                            GWFLDic[id] = [status, SN, version]
                         except:
                             continue
                     else:
                         try:
-                            MatchStr = re.sub("\s+",":",line)
+                            MatchStr = re.sub("\s+",":",line).split(":")
                             status = MatchStr[0]
                             id = MatchStr[6]
                             SN = MatchStr[7]
                             version = MatchStr[8]
-                            CDSCDic[id] = [status, SN, version]
+                            GWSLDic[id] = [status, SN, version]
                         except:
                             continue
                 else:
@@ -340,24 +352,43 @@ class Api():
     #将设备状态存为json文件到本地
     def dumpDeviceToJson(self):
         DeviceStatus = {}
-        GWFLDIC ,GWSLDIC, CDSCDic= self.onlineDeviceStatus()
+        GWFLDIC ,GWSLDIC, CDSCDIC= self.onlineDeviceStatus()
         #定义字段 一级网关id：GWFLId ， 二级网关id：GWSLId， 称Id：CDSCId；
-        #
-        DeviceStatus["GWFLDIC"]={}
+        # 一级网关
+        DeviceStatus["DeviceDetail"] = [GWFLDIC, GWSLDIC, CDSCDIC]
+        DeviceStatus["OnlineGwsl"] = [id for id in list(GWSLDIC.keys()) if GWSLDIC[id][0] == "online"]
+        DeviceStatus["OfflineGwsl"] =[id for id in list(GWSLDIC.keys()) if GWSLDIC[id][0] == "offline"]
+        DeviceStatus["OnlineCdsc"] = [id for id in list(CDSCDIC.keys()) if CDSCDIC[id][0] == "online"]
+        DeviceStatus["OfflineCdsc"] = [id for id in list(CDSCDIC.keys()) if CDSCDIC[id][0] == "offline"]
+        #直接输出
+        # print("打印设备在线状态：" , end='')
+        # print(DeviceStatus)
+        with open("DeviceStatus.json", "a", encoding="utf8") as j:
+            json.dump(DeviceStatus,j)
+        def returnOnlineDevices(): #闭包返回
+            return GWFLDIC, DeviceStatus["OnlineGwsl"]
+        return returnOnlineDevices
 
-
-
-
-    #基于onlineDeviceStatus函数的返回，实现自动ota
+    #基于onlineDeviceStatus函数的返回，实现自动ota在线的二级网关 与检测函数共用
     def auto_Ota(self):
-        pass
+        GWSLDIC, onlineGwsl= self.dumpDeviceToJson()() #获取可升级的二级网关设备信息和其在线的设备新
+        oldVersionList = [] #老版本的设备列表
+        lastVersion = re.findall(r"-V(\d{1,3}\.\d{1,3}\.\d{1,3})\.ota", self.laseVersionUrl)[0]
+        for id in onlineGwsl:
+            if GWSLDIC[id][2] != lastVersion:
+                oldVersionList.append(id)
+        for o in oldVersionList:
+            self.ota(o ,lastVersion)
 
-    #实例消亡输出
+    #单次升级时候实例消亡输出如下
     def __del__(self):
-        if self.otaSuccessList:
-            print("THIS OTA TEST SUCCESS DEVICE LIST: %s"%self.otaSuccessList)
-        if self.otaFailedList:
-            print("THIS OTA TEST FAILE DEVICE LIST: %s"%self.otaFailedList)
+        if self.flag == 0 and self.times == 0:
+            if self.otaSuccessList:
+                print("THIS OTA TEST SUCCESS DEVICE LIST: %s"%self.otaSuccessList)
+            if self.otaFailedList:
+                print("THIS OTA TEST FAILE DEVICE LIST: %s"%self.otaFailedList)
+        else:
+            print("本次ota测试结束！")
 
 
 #多进程 此函数不供if __name__ == "__main__"调用
@@ -379,13 +410,8 @@ def Multi():
         pool.close()
         pool.join()
 
-
 #此处可开启多进程
-
 #Multi()
-
-
-
 if __name__ == "__main__":
     C = Api()
     C.main()
